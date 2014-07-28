@@ -6,14 +6,14 @@ vnoremap am <esc>:call SelectCurrentBlock()<cr>
 onoremap am :call SelectCurrentBlock()<cr>
 
 function SelectCurrentBlock()
-    SelectBlock( 'indentOutAndBlank' )
+    call SelectBlock( 'indentOutAndBlank' )
 endfunction
 
 vnoremap ai <esc>:call SelectCurrentBlockWithSibling()<cr>
 onoremap ai :call SelectCurrentBlockWithSibling()<cr>
 
 function SelectCurrentBlockWithSibling()
-    SelectBlock( 'indentOut' )
+    call SelectBlock( 'indentOut' )
 endfunction
 
 function SelectBlock( edge_type )
