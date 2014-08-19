@@ -2,127 +2,162 @@
 "indent object
 "==================
 
-vnoremap am <esc>:call SelectBlock( 'indentOutAndBlank' )<cr>
-onoremap am :call SelectBlock( 'indentOutAndBlank' )<cr>
+vnoremap am <esc>:call SelectBlock( 'indentOutIncludingBlank' )<cr>
+onoremap am :call SelectBlock( 'indentOutIncludingBlank' )<cr>
 
-vnoremap au <esc>:call SelectBlock( 'indentChangeAndBlank' )<cr>
-onoremap au :call SelectBlock( 'indentChangeAndBlank' )<cr>
+vnoremap au <esc>:call SelectBlock( 'indentChangeOrBlank' )<cr>
+onoremap au :call SelectBlock( 'indentChangeOrBlank' )<cr>
 
 vnoremap ai <esc>:call SelectBlock( 'indentOut' )<cr>
 onoremap ai :call SelectBlock( 'indentOut' )<cr>
 
-function SelectBlock( edge_type )
-    let l:begin = GetBlockEdgeLineNumber( 'backward', a:edge_type, 'false') + 1
-    let l:end = GetBlockEdgeLineNumber( 'forward', a:edge_type, 'false') - 1
-    
+function SelectBlock( stop_anchor_type )
     "echo l:begin . ' - ' . l:end
-    call cursor( l:begin , 1 )
+    call cursor( GetBlockEdgeLineNumber( 'backward', a:stop_anchor_type) + 1 , 1 )
     normal! V
-    call cursor( l:end, 1 )
+    call cursor( GetBlockEdgeLineNumber( 'forward', a:stop_anchor_type ) - 1 , 1 )
 endfunction
 
 "==================
 "jump to indent
 "==================
 
-nnoremap M :call JumpToBlock('forward', 'false', 'indentOutAndBlank' )<cr>
-vnoremap M :call JumpToBlock('forward', 'true', 'indentOutAndBlank')<cr>
-nnoremap < :call JumpToBlock('backward', 'false', 'indentOutAndBlank')<cr>
-vnoremap < :call JumpToBlock('backward', 'true', 'indentOutAndBlank')<cr>
+nnoremap M :call JumpToBlock('forward', 'false', 'indentOutOrEqual' )<cr>
+vnoremap M :call JumpToBlock('forward', 'true', 'indentOutOrEqual')<cr>
+nnoremap < :call JumpToBlock('backward', 'false', 'indentOutOrEqual')<cr>
+vnoremap < :call JumpToBlock('backward', 'true', 'indentOutOrEqual')<cr>
 
-nnoremap m :call JumpToBlock('forward', 'false', 'indentChangeAndBlank')<cr>
-vnoremap m :call JumpToBlock('forward', 'true', 'indentChangeAndBlank')<cr>
-nnoremap , :call JumpToBlock('backward', 'false', 'indentChangeAndBlank')<cr>
-vnoremap , :call JumpToBlock('backward', 'true', 'indentChangeAndBlank')<cr>
+nnoremap H :call JumpToBlock('backward', 'false', 'indentOut')<cr>
+vnoremap H :call JumpToBlock('backward', 'true', 'indentOut')<cr>
+nnoremap L :call JumpToBlock('forward', 'false', 'indentOut')<cr>
+vnoremap L :call JumpToBlock('forward', 'true', 'indentOut')<cr>
+
+"nnoremap < :call JumpToBlock('backward', 'false', 'indentEqual')<cr>
+"vnoremap < :call JumpToBlock('backward', 'true', 'indentEqual')<cr>
+"nnoremap M :call JumpToBlock('forward', 'false', 'indentEqual')<cr>
+"vnoremap M :call JumpToBlock('forward', 'true', 'indentEqual')<cr>
 
 function JumpToBlock( direction, selection, type )
-    let l:block_line = GetBlockEdgeLineNumber( a:direction , a:type, 'true') 
-    
-    let l:jumpLine = l:block_line
-    let l:reason = 'jump to block'
-
-    "let l:max_line = JumpToSeveralLine( a:direction )
-
-    "if l:max_line < l:jumpLine
-        "let l:jumpLine = l:max_line
-        "let l:reason = 'jump to several lines'
-    "endif
-    
     if a:selection == 'true'
         normal! gv
     endif
 
-    call cursor( l:jumpLine , 1 )
+    call cursor( GetBlockEdgeLineNumber( a:direction , a:type ) , 1 )
     normal! ^
 endfunction
 
-function JumpToSeveralLine( direction )
-    return 10 + line('.')
-endfunction
-
 "=======================
-"common
+" core logic
 "======================
 
-function GetBlockEdgeLineNumber(direction, edge_type, autoAdjustBlankLine )
-    let l:iterator_offset = 1
-    if a:direction == 'backward'
-        let l:iterator_offset = -1
+function GetBlockEdgeLineNumber(direction, stop_anchor_type )
+    let l:base_line = GetLineInfo( line('.') )
+    if( l:base_line.isBlank )
+        return AdjustBlankLine( a:direction, l:base_line.line_num )
     endif
 
-    let l:iterator_line = line('.')
-    if getline( l:iterator_line ) =~ "^\\s*$"
-        let l:iterator_line =  AdjustBlankLine( a:direction, l:iterator_line )
-    endif
-
-    let l:base_indent = indent( l:iterator_line )
-    let l:indent = l:base_indent
-
-    let l:current_link_is_blank = 0
-    let l:last_line_is_blank = 0
-    let l:last_line_is_same_indent = 1
+    let l:current_line = l:base_line
+    let l:last_line = l:current_line
+    let l:iterator_offset = GetLineStep( a:direction )
 
     while 1
         "echo 'block edge : line_num=' . l:iterator_line . ' - indent=' . l:indent . ' - base_indent=' . l:base_indent
 
-        if ( IsOutOfFileBound( a:direction, l:iterator_line ) )
-            return l:iterator_line
+        if ( IsOutOfFileBound(a:direction, l:current_line.line_num ) )
+            return l:current_line.line_num
         endif
         
-        let l:current_line_is_blank = ( getline(l:iterator_line) =~ "^\\s*$" )
-        
-        if IsBoundEdge( a:edge_type, l:base_indent, l:indent, l:last_line_is_blank, l:last_line_is_same_indent, l:current_line_is_blank )
-            return l:iterator_line
+        if IsStopAnchor( a:stop_anchor_type, l:current_line, l:last_line , l:base_line )
+            return l:current_line.line_num
         endif
 
-        let l:last_line_is_blank = l:current_line_is_blank
-        let l:last_line_is_same_indent = l:base_indent == l:indent
-            
-        let l:iterator_line = l:iterator_line + l:iterator_offset
-        let l:indent = indent( l:iterator_line )
+        let l:last_line = l:current_line
+        let l:current_line = GetLineInfo( l:current_line.line_num + l:iterator_offset )
     endwhile
 endfunction
 
-function IsBoundEdge( edge_type, base_indent, indent, last_line_is_blank, last_line_is_same_indent, current_line_is_blank  )
-    if a:current_line_is_blank 
-        if a:edge_type == 'indentOutAndBlank' || a:edge_type == 'indentChangeAndBlank'
-           return a:last_line_is_same_indent 
+function IsStopAnchor(stop_anchor_type, current_line, last_line, base_line )
+        if a:stop_anchor_type == 'indentOutIncludingBlank' 
+            if a:current_line.isBlank
+               return IsIndentKeep ( a:last_line , a:base_line )
+            else
+               return ( IsIndentOut( a:current_line , a:base_line ) || ( IsIndentKeep( a:current_line, a:base_line ) && a:last_line.isBlank ) )
+            endif
         endif
 
-        return 0
-    else
-        if a:edge_type == 'indentOutAndBlank'
-           return ( ( a:base_indent > a:indent ) || ( a:base_indent == a:indent && a:last_line_is_blank ) )
-        endif
-        
-        if a:edge_type == 'indentOut'
-            return ( a:base_indent > a:indent ) 
+        if a:stop_anchor_type == 'indentChangeOrBlank' 
+            if a:current_line.isBlank
+               return IsIndentKeep ( a:last_line , a:base_line )
+            else
+               return ( IsIndentKeep( a:current_line, a:base_line ) == 0 || IsIndentKeep( a:current_line, a:base_line ) && a:last_line.isBlank ) 
+            endif
         endif
 
-        if a:edge_type == 'indentChangeAndBlank'
-            return ( ( a:base_indent != a:indent ) || (  a:base_indent == a:indent && a:last_line_is_blank ) )
+        if a:stop_anchor_type == 'indentOut'
+            if a:current_line.isBlank
+                return 0
+            else
+                return ( IsIndentOut( a:current_line, a:base_line ) ) 
+            endif
         endif
+
+        if a:stop_anchor_type == 'indentOutOrEqual'
+            if a:current_line.isBlank
+                return 0
+            else
+                return ( IsIndentKeep( a:last_line, a:base_line ) == 0 && IsIndentKeep( a:current_line, a:base_line ) ) 
+                        \ || ( a:last_line.isBlank && IsIndentKeep( a:current_line, a:base_line ) ) 
+                        \ || ( IsIndentOut( a:current_line, a:base_line ))
+            endif
+        endif
+
+        if a:stop_anchor_type == 'indentEqual' 
+            if a:current_line.isBlank
+                return 0
+            else
+                return ( IsIndentKeep( a:last_line, a:base_line ) == 0 && IsIndentKeep( a:current_line, a:base_line ) ) 
+            endif
+        endif
+
+        if a:current_line.isBlank
+            return 0
+        else                       "0
+            return 1
+        endif
+endfunction
+
+function GetLineInfo( line_num )
     
+    let l:line = {}
+
+    let l:line.line_num = a:line_num
+    let l:line.indent =  indent( a:line_num ) 
+    let l:line.isBlank = ( getline( a:line_num ) =~ "^\\s*$" )
+
+    return l:line
+
+endfunction
+
+"=======================
+"util
+"======================
+
+function IsIndentIn( line_a, line_b )
+    return a:line_a.indent > a:line_b.indent
+endfunction
+
+function IsIndentOut( line_a, line_b )
+    return a:line_a.indent < a:line_b.indent
+endfunction
+
+function IsIndentKeep( line_a, line_b )
+    return a:line_a.indent == a:line_b.indent
+endfunction
+
+function GetLineStep( direction )
+    if a:direction == 'backward'
+        return -1
+    else
         return 1
     endif
 endfunction
@@ -142,3 +177,5 @@ function AdjustBlankLine( direction, line_num )
         return prevnonblank( a:line_num )
      endif
 endfunction
+
+
